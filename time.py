@@ -24,7 +24,7 @@ data = {
         "You are absolute trash, nobody likes you.",
         "Keep talking, your stupidity is entertaining.",
     ],
-    "targets": [],  # List of user IDs or usernames/identifiers
+    "targets": [],  # List of user IDs
     "friends": [],
     "enemy_targets": [],
     "enemy_texts": ["Get lost!", "Leave me alone, idiot."],
@@ -77,7 +77,7 @@ HELP_TEXT = """
 /start [count] [delay]
 
 <b>Target :</b> 🎯
-/targed [ID یا Reply]
+/targed
 /deltarged [number یا Reply]
 /listtarged
 /setemoji [emoji]
@@ -239,31 +239,14 @@ def stop_spam(message):
 def add_target(message):
     if not is_owner(message.from_user.id):
         return
-    
-    parts = message.text.split(maxsplit=1)
-    
-    if len(parts) == 2:
-        target_val = parts[1].strip().replace("@", "")
-        if target_val.isdigit():
-            target_val = int(target_val)
-        
-        if target_val not in data["targets"]:
-            data["targets"].append(target_val)
-            save_data()
-            bot.reply_to(message, f"🎯 Target added: {target_val}")
-        else:
-            bot.reply_to(message, "ℹ️ Already in target list.")
+    if not message.reply_to_message or not message.reply_to_message.from_user:
+        bot.reply_to(message, "⚠️ Reply to a user.")
         return
-
-    if message.reply_to_message and message.reply_to_message.from_user:
-        tid = message.reply_to_message.from_user.id
-        if tid not in data["targets"]:
-            data["targets"].append(tid)
-            save_data()
-        bot.reply_to(message, "🎯 Target added via reply.")
-        return
-
-    bot.reply_to(message, "⚠️ Usage: /targed [ID] OR reply to a user.")
+    tid = message.reply_to_message.from_user.id
+    if tid not in data["targets"]:
+        data["targets"].append(tid)
+        save_data()
+    bot.reply_to(message, "🎯 Target added.")
 
 
 @bot.message_handler(commands=["deltarged"])
@@ -272,13 +255,12 @@ def del_target(message):
         return
     
     parts = message.text.split()
-    
     if len(parts) == 2 and parts[1].isdigit():
         idx = int(parts[1]) - 1
         if 0 <= idx < len(data["targets"]):
-            removed_target = data["targets"].pop(idx)
+            removed_tid = data["targets"].pop(idx)
             save_data()
-            bot.reply_to(message, f"🗑️ Target removed successfully ({removed_target}).")
+            bot.reply_to(message, f"🗑️ Target removed successfully (ID: {removed_tid}).")
         else:
             bot.reply_to(message, "❌ Invalid index number.")
         return
@@ -308,14 +290,10 @@ def list_target(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     
     list_str = f"🎯 <b>Target List ({len(data['targets'])} users):</b>\n"
-    for i, t in enumerate(data["targets"], 1):
-        list_str += f"<b>{i}.</b> Target: <code>{t}</code>\n"
-        if isinstance(t, int) or str(t).isdigit():
-            button_text = f"{emoji} Profile {i} ({t})"
-            markup.add(types.InlineKeyboardButton(button_text, url=f"tg://user?id={t}"))
-        else:
-            button_text = f"{emoji} Profile {i} (@{t})"
-            markup.add(types.InlineKeyboardButton(button_text, url=f"https://t.me/{t}"))
+    for i, tid in enumerate(data["targets"], 1):
+        list_str += f"<b>{i}.</b> ID: <code>{tid}</code>\n"
+        button_text = f"{emoji} Profile {i} ({tid})"
+        markup.add(types.InlineKeyboardButton(button_text, url=f"tg://user?id={tid}"))
         
     bot.reply_to(message, list_str, parse_mode="HTML", reply_markup=markup)
 
@@ -387,18 +365,8 @@ def start_tofan(message):
         while sent < count and active_tofans.get(chat_id, False):
             try:
                 txt = random.choice(data["target_texts"])
-                
-                links = []
-                for t in data["targets"]:
-                    if isinstance(t, int) or str(t).isdigit():
-                        links.append(f"<a href='tg://user?id={t}'>{emoji}</a>")
-                    else:
-                        clean_u = str(t).replace("@", "")
-                        links.append(f"<a href='https://t.me/{clean_u}'>{emoji}</a>")
-                
-                target_links = "".join(links)
+                target_links = "".join([f"<a href='tg://user?id={tid}'>{emoji}</a>" for tid in data["targets"]])
                 formatted_text = f"{txt}\n\n{target_links}"
-                
                 bot.send_message(chat_id, formatted_text, parse_mode="HTML")
                 sent += 1
                 time.sleep(delay if delay > 0 else 0.0001)
