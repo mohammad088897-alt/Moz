@@ -6,6 +6,7 @@ import threading
 import time
 import telebot
 from telebot import types
+from flask import Flask
 
 # ===================== BOT CONFIGURATION =====================
 TOKEN = "9094522280:AAHAnO6sD_3JyNp4TAjvapMYjV16gAbhQas"
@@ -37,7 +38,6 @@ data = {
     "anti_chats": [],
 }
 
-# دیکشنری برای شمارش تلاش‌های کاربران غیرمجاز
 unauthorized_attempts = {}
 
 if os.path.exists(DATA_FILE):
@@ -60,7 +60,6 @@ def is_owner(user_id):
     return user_id in data["owners"]
 
 
-# Global control flags for active loops
 active_spams = {}
 active_tofans = {}
 ping_start_time = time.time()
@@ -256,8 +255,6 @@ def del_target(message):
         return
     
     parts = message.text.split()
-    
-    # حالت اول: حذف با شماره (مثل /deltarged 1)
     if len(parts) == 2 and parts[1].isdigit():
         idx = int(parts[1]) - 1
         if 0 <= idx < len(data["targets"]):
@@ -268,7 +265,6 @@ def del_target(message):
             bot.reply_to(message, "❌ Invalid index number.")
         return
 
-    # حالت دوم: حذف با ریپلای روی پیام کاربر
     if message.reply_to_message and message.reply_to_message.from_user:
         tid = message.reply_to_message.from_user.id
         if tid in data["targets"]:
@@ -369,10 +365,8 @@ def start_tofan(message):
         while sent < count and active_tofans.get(chat_id, False):
             try:
                 txt = random.choice(data["target_texts"])
-                
                 target_links = "".join([f"<a href='tg://user?id={tid}'>{emoji}</a>" for tid in data["targets"]])
                 formatted_text = f"{txt}\n\n{target_links}"
-                
                 bot.send_message(chat_id, formatted_text, parse_mode="HTML")
                 sent += 1
                 time.sleep(delay if delay > 0 else 0.0001)
@@ -816,6 +810,20 @@ def universal_message_tracker(message):
         except Exception:
             pass
 
+
+# ===================== FLASK WEB SERVER (FOR RENDER PORT) =====================
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "FONEX Bot is active and running!"
+
+def run_web():
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
+
+# اجرای وب‌سرور در پس‌زمینه برای ماندگاری روی رندر
+threading.Thread(target=run_web, daemon=True).start()
 
 print("FONEX bot is running successfully...")
 bot.infinity_polling(skip_pending=True)
