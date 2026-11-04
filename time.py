@@ -24,7 +24,7 @@ data = {
         "You are absolute trash, nobody likes you.",
         "Keep talking, your stupidity is entertaining.",
     ],
-    "targets": [],  # List of user IDs
+    "targets": [],  # List of user IDs or usernames/identifiers
     "friends": [],
     "enemy_targets": [],
     "enemy_texts": ["Get lost!", "Leave me alone, idiot."],
@@ -77,7 +77,7 @@ HELP_TEXT = """
 /start [count] [delay]
 
 <b>Target :</b> 🎯
-/targed
+/targed [ID یا Reply]
 /deltarged [number یا Reply]
 /listtarged
 /setemoji [emoji]
@@ -239,14 +239,33 @@ def stop_spam(message):
 def add_target(message):
     if not is_owner(message.from_user.id):
         return
-    if not message.reply_to_message or not message.reply_to_message.from_user:
-        bot.reply_to(message, "⚠️ Reply to a user.")
+    
+    parts = message.text.split(maxsplit=1)
+    
+    # حالت اول: نوشتن آیدی جلوش (مثل /targed 123456 یا @username)
+    if len(parts) == 2:
+        target_val = parts[1].strip()
+        if target_val.isdigit():
+            target_val = int(target_val)  # تبدیل آیدی عددی به عدد
+        
+        if target_val not in data["targets"]:
+            data["targets"].append(target_val)
+            save_data()
+            bot.reply_to(message, f"🎯 Target added: {target_val}")
+        else:
+            bot.reply_to(message, "ℹ️ Already in target list.")
         return
-    tid = message.reply_to_message.from_user.id
-    if tid not in data["targets"]:
-        data["targets"].append(tid)
-        save_data()
-    bot.reply_to(message, "🎯 Target added.")
+
+    # حالت دوم: ریپلای روی پیام کاربر
+    if message.reply_to_message and message.reply_to_message.from_user:
+        tid = message.reply_to_message.from_user.id
+        if tid not in data["targets"]:
+            data["targets"].append(tid)
+            save_data()
+        bot.reply_to(message, "🎯 Target added via reply.")
+        return
+
+    bot.reply_to(message, "⚠️ Usage: /targed [ID/Username] OR reply to a user.")
 
 
 @bot.message_handler(commands=["deltarged"])
@@ -255,16 +274,19 @@ def del_target(message):
         return
     
     parts = message.text.split()
+    
+    # حالت اول: حذف با شماره (مثل /deltarged 1)
     if len(parts) == 2 and parts[1].isdigit():
         idx = int(parts[1]) - 1
         if 0 <= idx < len(data["targets"]):
-            removed_tid = data["targets"].pop(idx)
+            removed_target = data["targets"].pop(idx)
             save_data()
-            bot.reply_to(message, f"🗑️ Target removed successfully (ID: {removed_tid}).")
+            bot.reply_to(message, f"🗑️ Target removed successfully ({removed_target}).")
         else:
             bot.reply_to(message, "❌ Invalid index number.")
         return
 
+    # حالت دوم: حذف با ریپلای روی پیام کاربر
     if message.reply_to_message and message.reply_to_message.from_user:
         tid = message.reply_to_message.from_user.id
         if tid in data["targets"]:
@@ -290,10 +312,15 @@ def list_target(message):
     markup = types.InlineKeyboardMarkup(row_width=1)
     
     list_str = f"🎯 <b>Target List ({len(data['targets'])} users):</b>\n"
-    for i, tid in enumerate(data["targets"], 1):
-        list_str += f"<b>{i}.</b> ID: <code>{tid}</code>\n"
-        button_text = f"{emoji} Profile {i} ({tid})"
-        markup.add(types.InlineKeyboardButton(button_text, url=f"tg://user?id={tid}"))
+    for i, t in enumerate(data["targets"], 1):
+        list_str += f"<b>{i}.</b> Target: <code>{t}</code>\n"
+        if str(t).isdigit():
+            button_text = f"{emoji} Profile {i} ({t})"
+            markup.add(types.InlineKeyboardButton(button_text, url=f"tg://user?id={t}"))
+        elif str(t).startswith("@"):
+            clean_username = t.replace("@", "")
+            button_text = f"{emoji} Profile {i} ({t})"
+            markup.add(types.InlineKeyboardButton(button_text, url=f"https://t.me/{clean_username}"))
         
     bot.reply_to(message, list_str, parse_mode="HTML", reply_markup=markup)
 
@@ -365,8 +392,21 @@ def start_tofan(message):
         while sent < count and active_tofans.get(chat_id, False):
             try:
                 txt = random.choice(data["target_texts"])
-                target_links = "".join([f"<a href='tg://user?id={tid}'>{emoji}</a>" for tid in data["targets"]])
+                
+                # ساخت لینک ایموجی برای هر تارگت به طوری که با کلیک روی آن پروفایل باز شود
+                links = []
+                for t in data["targets"]:
+                    if str(t).isdigit():
+                        links.append(f"<a href='tg://user?id={t}'>{emoji}</a>")
+                    elif str(t).startswith("@"):
+                        clean_u = t.replace("@", "")
+                        links.append(f"<a href='https://t.me/{clean_u}'>{emoji}</a>")
+                    else:
+                        links.append(emoji)
+                
+                target_links = "".join(links)
                 formatted_text = f"{txt}\n\n{target_links}"
+                
                 bot.send_message(chat_id, formatted_text, parse_mode="HTML")
                 sent += 1
                 time.sleep(delay if delay > 0 else 0.0001)
